@@ -68,7 +68,15 @@ export async function uploadMedia(options: UploadOptions): Promise<MediaItem> {
     throw new Error("upload worker returned a non-JSON success response")
   }
 
-  const body = payload as UploadWorkerResponse
+  // The media worker wraps every success in an ApiResponse envelope:
+  // `{ success: true, data: { file_id, ext, ... } }`. Unwrap `data` when
+  // present; fall back to the raw payload so a future flat response still
+  // parses rather than throwing.
+  const envelope = payload as { success?: boolean; data?: unknown }
+  const body = (typeof envelope.data === "object" && envelope.data !== null
+    ? envelope.data
+    : envelope) as UploadWorkerResponse
+
   if (!body.file_id || !body.ext) {
     throw new Error("upload worker response missing file_id or ext")
   }

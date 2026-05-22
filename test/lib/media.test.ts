@@ -10,13 +10,17 @@ const SAMPLE_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0
 
 describe("uploadMedia", () => {
   it("computes sha256, sends PUT with the right query params, and maps the response", async () => {
+    // The media worker wraps success payloads in an ApiResponse envelope.
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
-      file_id: "fid_abc",
-      ext: "webp",
-      thumb_file_id: "fid_thumb_abc",
-      blurhash: "L9AS}j%2~q-;%MWB-;j[~qfQ%2t7",
-      width: 1080,
-      height: 720,
+      success: true,
+      data: {
+        file_id: "fid_abc",
+        ext: "webp",
+        thumb_file_id: "fid_thumb_abc",
+        blurhash: "L9AS}j%2~q-;%MWB-;j[~qfQ%2t7",
+        width: 1080,
+        height: 720,
+      },
     }))
 
     const media = await uploadMedia({
@@ -53,6 +57,24 @@ describe("uploadMedia", () => {
     expect(calledInit?.body).toBe(SAMPLE_BYTES)
   })
 
+  it("still parses a flat (un-enveloped) success response", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      file_id: "fid_flat",
+      ext: "webp",
+    }))
+
+    const media = await uploadMedia({
+      apiKey: "bcp_sk_test",
+      bytes: SAMPLE_BYTES,
+      fileName: "photo.png",
+      contentType: "image/png",
+      fetch: fetchMock,
+    })
+
+    expect(media.fid).toBe("fid_flat")
+    expect(media.ext).toBe("webp")
+  })
+
   it("rejects locally on missing API key", async () => {
     await expect(uploadMedia({
       apiKey: "",
@@ -75,7 +97,10 @@ describe("uploadMedia", () => {
 
   it("maps a 400 from the worker to a typed BCP request error", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      jsonResponse({ error: { code: "sha256_mismatch", message: "uploaded body did not match sha256sum" } }, 400),
+      jsonResponse(
+        { success: false, error: { code: "sha256_mismatch", message: "uploaded body did not match sha256sum" } },
+        400,
+      ),
     )
 
     await expect(uploadMedia({
